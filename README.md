@@ -1,4 +1,5 @@
 # GeoLang
+<<<<<<< HEAD
 
 GeoLang is an experimental, geometry-oriented programming language. It is being
 built incrementally to make each language-processing stage understandable and
@@ -175,3 +176,6 @@ The test suite includes unit tests and CLI integration tests for successful
 execution and lexical, syntax, semantic, and runtime failures. GeoLang does not
 compile to machine code or another language. User-defined functions, a REPL,
 and user-defined instructions remain future features.
+=======
+A custom geometry-oriented programming language built with Python
+>>>>>>> 094c888c6f6c77e24b7a32ccfe0380eaceeab062
