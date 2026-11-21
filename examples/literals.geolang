@@ -1,0 +1,9 @@
+language GeoLang
+
+# Strings, booleans, and print output
+let name = "wheel"
+let enabled = true
+
+print(name)
+print(enabled)
+print(false)

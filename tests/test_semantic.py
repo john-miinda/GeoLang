@@ -197,6 +197,27 @@ class SemanticAnalyzerTests(unittest.TestCase):
 
         self.assertIn("finite number", str(overflow_error.exception))
 
+    def test_rejects_boolean_geometry_dimension(self) -> None:
+        with self.assertRaises(SemanticError) as error:
+            self.analyze("circle radius = true")
+
+        self.assertIn("numeric values", str(error.exception))
+
+    def test_accepts_runtime_numeric_input_in_arithmetic(self) -> None:
+        self.analyze(
+            'let width = input_number("Width: ")\n'
+            'let height = input_number("Height: ")\n'
+            "let area = width * height\n"
+            "let ratio = area / (width - height)\n"
+            "print(ratio)"
+        )
+
+    def test_rejects_input_number_without_string_prompt(self) -> None:
+        with self.assertRaises(SemanticError) as error:
+            self.analyze("let value = input_number(3)")
+
+        self.assertIn("prompt must be a string", str(error.exception))
+
 
 if __name__ == "__main__":
     unittest.main()

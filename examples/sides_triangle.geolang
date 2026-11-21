@@ -1,0 +1,4 @@
+language GeoLang
+
+triangle sides side_a = 3 side_b = 4 side_c = 5
+calculate sides

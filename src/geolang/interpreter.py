@@ -7,9 +7,11 @@ from geolang.ast_nodes import (
     CalculateStatement,
     CallableDeclaration,
     GeometryDeclaration,
+    ImportStatement,
     IfStatement,
     PerformStatement,
     Program,
+    PrintStatement,
     ReturnStatement,
     Statement,
     VariableAssignment,
@@ -19,6 +21,7 @@ from geolang.ast_nodes import (
 from geolang.errors import RuntimeGeoLangError, SemanticError
 from geolang.expressions import (
     ExpressionEvaluationError,
+    RuntimeValue,
     evaluate_condition,
     evaluate_expression,
 )
@@ -30,7 +33,7 @@ MAX_CALL_DEPTH = 100
 
 
 class _ReturnSignal(Exception):
-    def __init__(self, value: int | float) -> None:
+    def __init__(self, value: RuntimeValue) -> None:
         self.value = value
 
 
@@ -54,7 +57,7 @@ class Interpreter:
             if isinstance(statement, CallableDeclaration)
         }
         self._call_depth = 0
-        variables: dict[str, int | float] = {}
+        variables: dict[str, RuntimeValue] = {}
         named_shapes: dict[str, GeometryDeclaration] = {}
         anonymous_shapes: dict[TokenType, GeometryDeclaration] = {}
         for statement in program.statements:
@@ -79,13 +82,21 @@ class Interpreter:
     def _execute_statements(
         self,
         statements: tuple[Statement, ...],
-        variables: dict[str, int | float],
+        variables: dict[str, RuntimeValue],
         named_shapes: dict[str, GeometryDeclaration],
         anonymous_shapes: dict[TokenType, GeometryDeclaration],
         results: list[GeometryResult],
     ) -> None:
         for statement in statements:
-            if isinstance(statement, VariableDeclaration):
+            if isinstance(statement, ImportStatement):
+                continue
+            if isinstance(statement, PrintStatement):
+                value = self._evaluate(statement.value, variables)
+                if isinstance(value, bool):
+                    print("true" if value else "false")
+                else:
+                    print(value)
+            elif isinstance(statement, VariableDeclaration):
                 variables[statement.name] = self._evaluate(
                     statement.value, variables
                 )
@@ -162,7 +173,11 @@ class Interpreter:
                     )
                 results.append(self._calculate(declaration, statement, variables))
 
-    def _evaluate(self, expression, variables: dict[str, int | float]) -> int | float:
+    def _evaluate(
+        self,
+        expression,
+        variables: dict[str, RuntimeValue],
+    ) -> RuntimeValue:
         try:
             return evaluate_expression(
                 expression,
@@ -183,7 +198,11 @@ class Interpreter:
                 error.column,
             ) from error
 
-    def _evaluate_condition(self, condition, variables: dict[str, int | float]) -> bool:
+    def _evaluate_condition(
+        self,
+        condition,
+        variables: dict[str, RuntimeValue],
+    ) -> bool:
         try:
             return evaluate_condition(
                 condition,
@@ -207,13 +226,53 @@ class Interpreter:
     def _invoke(
         self,
         name: str,
-        arguments: tuple[int | float, ...],
-        variables: dict[str, int | float],
+        arguments: tuple[RuntimeValue, ...],
+        variables: dict[str, RuntimeValue],
         line: int,
         column: int,
         *,
         expect_value: bool,
-    ) -> int | float:
+    ) -> RuntimeValue:
+        if name == "input_number":
+            if not expect_value:
+                raise RuntimeGeoLangError(
+                    "'input_number' can only be used as a value.",
+                    line,
+                    column,
+                )
+            if len(arguments) != 1 or not isinstance(arguments[0], str):
+                raise RuntimeGeoLangError(
+                    "'input_number' expects exactly one string prompt.",
+                    line,
+                    column,
+                )
+            try:
+                text = input(arguments[0]).strip()
+            except EOFError as error:
+                raise RuntimeGeoLangError(
+                    "No numeric input was provided.",
+                    line,
+                    column,
+                ) from error
+            try:
+                value: int | float = int(text)
+            except ValueError:
+                try:
+                    value = float(text)
+                except ValueError as error:
+                    raise RuntimeGeoLangError(
+                        f"'{text}' is not a valid number.",
+                        line,
+                        column,
+                    ) from error
+            if isinstance(value, float) and not math.isfinite(value):
+                raise RuntimeGeoLangError(
+                    "Input must be a finite number.",
+                    line,
+                    column,
+                )
+            return value
+
         routine = self._callables.get(name)
         if routine is None:
             raise RuntimeGeoLangError(
@@ -277,14 +336,21 @@ class Interpreter:
         self,
         declaration: GeometryDeclaration,
         statement: CalculateStatement,
-        variables: dict[str, int | float],
+        variables: dict[str, RuntimeValue],
     ) -> GeometryResult:
         dimensions: dict[str, int | float] = {}
         for field in declaration.fields:
             try:
-                dimensions[field.name] = self._evaluate(field.value, variables)
+                value = self._evaluate(field.value, variables)
             except RuntimeGeoLangError:
                 raise
+            if not isinstance(value, (int, float)) or isinstance(value, bool):
+                raise RuntimeGeoLangError(
+                    "Geometry dimensions must evaluate to numeric values.",
+                    field.line,
+                    field.column,
+                )
+            dimensions[field.name] = value
 
         try:
             SemanticAnalyzer.validate_values(

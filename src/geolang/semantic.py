@@ -2,6 +2,7 @@
 
 from geolang.ast_nodes import (
     BinaryExpression,
+    BooleanExpression,
     CallExpression,
     CalculateStatement,
     CallableDeclaration,
@@ -11,9 +12,12 @@ from geolang.ast_nodes import (
     IfStatement,
     NumberExpression,
     PerformStatement,
+    PrintStatement,
+    ImportStatement,
     Program,
     ReturnStatement,
     Statement,
+    StringExpression,
     UnaryExpression,
     VariableAssignment,
     VariableDeclaration,
@@ -23,6 +27,7 @@ from geolang.ast_nodes import (
 from geolang.errors import SemanticError
 from geolang.expressions import (
     ExpressionEvaluationError,
+    RuntimeValue,
     evaluate_condition,
     evaluate_expression,
 )
@@ -37,6 +42,7 @@ _REQUIRED_FIELDS: dict[TokenType, frozenset[str]] = {
 _TRIANGLE_DIMENSIONS = frozenset({"base", "height", "side_a", "side_b", "side_c"})
 _TRIANGLE_BASE_HEIGHT = frozenset({"base", "height"})
 _TRIANGLE_SIDES = frozenset({"side_a", "side_b", "side_c"})
+_INPUT_NUMBER = "input_number"
 
 
 class SemanticAnalyzer:
@@ -54,6 +60,12 @@ class SemanticAnalyzer:
         self._callables = {}
         for statement in program.statements:
             if isinstance(statement, CallableDeclaration):
+                if statement.name == _INPUT_NUMBER:
+                    self._raise(
+                        statement.line,
+                        statement.column,
+                        f"'{_INPUT_NUMBER}' is a built-in function name.",
+                    )
                 if statement.name in self._callables:
                     self._raise(
                         statement.line,
@@ -93,6 +105,7 @@ class SemanticAnalyzer:
         for routine in self._callables.values():
             variables = top_level_variables.copy()
             variables.update({name: 1 for name in routine.parameters})
+            self._mutable_variables.update(routine.parameters)
             self._analyze_block(
                 routine.body,
                 variables,
@@ -111,14 +124,18 @@ class SemanticAnalyzer:
     def _analyze_block(
         self,
         statements: tuple[Statement, ...],
-        variables: dict[str, int | float],
+        variables: dict[str, int | float | bool | str],
         named_shapes: dict[str, GeometryDeclaration],
         anonymous_shapes: dict[TokenType, GeometryDeclaration],
         inside_control: bool,
         routine: CallableDeclaration | None = None,
-    ) -> dict[str, int | float]:
+    ) -> dict[str, RuntimeValue]:
         for statement in statements:
-            if isinstance(statement, VariableDeclaration):
+            if isinstance(statement, ImportStatement):
+                continue
+            if isinstance(statement, PrintStatement):
+                self._analyze_expression(statement.value, variables)
+            elif isinstance(statement, VariableDeclaration):
                 if inside_control:
                     self._raise(
                         statement.line,
@@ -131,10 +148,13 @@ class SemanticAnalyzer:
                         statement.column,
                         f"Variable '{statement.name}' is declared more than once.",
                     )
-                if self._uses_mutable_variable(statement.value):
+                dynamic = self._uses_mutable_variable(statement.value)
+                if dynamic:
                     self._mutable_variables.add(statement.name)
-                variables[statement.name] = self._evaluate(
-                    statement.value, variables
+                variables[statement.name] = self._analyze_expression(
+                    statement.value,
+                    variables,
+                    dynamic=dynamic,
                 )
             elif isinstance(statement, VariableAssignment):
                 if statement.name not in variables:
@@ -143,8 +163,11 @@ class SemanticAnalyzer:
                         statement.column,
                         f"Variable '{statement.name}' is not defined.",
                     )
-                variables[statement.name] = self._evaluate(
-                    statement.value, variables
+                dynamic = self._uses_mutable_variable(statement.value)
+                variables[statement.name] = self._analyze_expression(
+                    statement.value,
+                    variables,
+                    dynamic=dynamic,
                 )
             elif isinstance(statement, GeometryDeclaration):
                 if inside_control or routine is not None:
@@ -169,7 +192,7 @@ class SemanticAnalyzer:
                 if not exists:
                     self._raise(statement.line, statement.column, message)
             elif isinstance(statement, IfStatement):
-                self._evaluate_condition(statement.condition, variables)
+                self._analyze_condition(statement.condition, variables)
                 initial = variables.copy()
                 then_values = self._analyze_block(
                     statement.then_branch,
@@ -189,7 +212,7 @@ class SemanticAnalyzer:
                 )
                 variables = self._merge_variables(initial, then_values, else_values)
             elif isinstance(statement, WhileStatement):
-                self._evaluate_condition(statement.condition, variables)
+                self._analyze_condition(statement.condition, variables)
                 initial = variables.copy()
                 body_values = self._analyze_block(
                     statement.body,
@@ -224,10 +247,10 @@ class SemanticAnalyzer:
 
     @staticmethod
     def _merge_variables(
-        initial: dict[str, int | float],
-        first: dict[str, int | float],
-        second: dict[str, int | float],
-    ) -> dict[str, int | float]:
+        initial: dict[str, RuntimeValue],
+        first: dict[str, RuntimeValue],
+        second: dict[str, RuntimeValue],
+    ) -> dict[str, RuntimeValue]:
         merged = initial.copy()
         for name in initial:
             if first.get(name) == second.get(name):
@@ -237,8 +260,8 @@ class SemanticAnalyzer:
     def _evaluate(
         self,
         expression: Expression,
-        variables: dict[str, int | float],
-    ) -> int | float:
+        variables: dict[str, int | float | bool | str],
+    ) -> int | float | bool | str:
         try:
             return evaluate_expression(
                 expression,
@@ -248,10 +271,86 @@ class SemanticAnalyzer:
         except ExpressionEvaluationError as error:
             self._raise(error.line, error.column, error.message)
 
+    def _analyze_expression(
+        self,
+        expression: Expression,
+        variables: dict[str, int | float | bool | str],
+        *,
+        dynamic: bool | None = None,
+    ) -> int | float | bool | str:
+        is_dynamic = (
+            self._uses_mutable_variable(expression)
+            if dynamic is None
+            else dynamic
+        )
+        if is_dynamic:
+            self._validate_expression(expression, variables)
+            return 1.0
+        return self._evaluate(expression, variables)
+
+    def _analyze_condition(
+        self,
+        condition: Condition,
+        variables: dict[str, int | float | bool | str],
+    ) -> None:
+        dynamic = self._uses_mutable_variable(
+            condition.left
+        ) or self._uses_mutable_variable(condition.right)
+        if dynamic:
+            self._validate_expression(condition.left, variables)
+            self._validate_expression(condition.right, variables)
+            return
+        self._evaluate_condition(condition, variables)
+
+    def _validate_expression(
+        self,
+        expression: Expression,
+        variables: dict[str, int | float | bool | str],
+    ) -> None:
+        if isinstance(expression, VariableExpression):
+            if expression.name not in variables:
+                self._raise(
+                    expression.line,
+                    expression.column,
+                    f"Variable '{expression.name}' is not defined.",
+                )
+        elif isinstance(expression, CallExpression):
+            for argument in expression.arguments:
+                self._validate_expression(argument, variables)
+            if expression.name == _INPUT_NUMBER:
+                if len(expression.arguments) != 1:
+                    self._raise(
+                        expression.line,
+                        expression.column,
+                        "'input_number' expects exactly one string prompt.",
+                    )
+                prompt = expression.arguments[0]
+                if not self._uses_mutable_variable(prompt):
+                    prompt_value = self._evaluate(prompt, variables)
+                    if not isinstance(prompt_value, str):
+                        self._raise(
+                            expression.line,
+                            expression.column,
+                            "'input_number' prompt must be a string.",
+                        )
+            else:
+                self._validate_call(
+                    expression.name,
+                    expression.arguments,
+                    wants_value=True,
+                    line=expression.line,
+                    column=expression.column,
+                )
+        elif isinstance(expression, UnaryExpression):
+            self._validate_expression(expression.operand, variables)
+        elif isinstance(expression, BinaryExpression):
+            self._validate_expression(expression.left, variables)
+            self._validate_expression(expression.right, variables)
+
     def _evaluate_condition(
         self,
         condition: Condition,
-        variables: dict[str, int | float],
+        variables: dict[str, int | float | bool | str],
     ) -> bool:
         try:
             return evaluate_condition(
@@ -265,7 +364,7 @@ class SemanticAnalyzer:
     def _validate_declaration(
         self,
         declaration: GeometryDeclaration,
-        variables: dict[str, int | float],
+        variables: dict[str, RuntimeValue],
     ) -> None:
         required_fields = _REQUIRED_FIELDS.get(declaration.kind, frozenset())
         allowed_fields = (
@@ -292,9 +391,20 @@ class SemanticAnalyzer:
                     f"{declaration.kind.name.lower()}; expected: {expected}.",
                 )
             supplied_fields.add(field.name)
-            value = self._evaluate(field.value, variables)
+            dynamic = self._uses_mutable_variable(field.value)
+            value = self._analyze_expression(
+                field.value,
+                variables,
+                dynamic=dynamic,
+            )
+            if not isinstance(value, (int, float)) or isinstance(value, bool):
+                self._raise(
+                    field.line,
+                    field.column,
+                    "Geometry dimensions must evaluate to numeric values.",
+                )
             values[field.name] = value
-            if not self._uses_mutable_variable(field.value):
+            if not dynamic:
                 if value < 0:
                     self._raise(
                         field.line,
@@ -405,7 +515,7 @@ class SemanticAnalyzer:
                 SemanticAnalyzer._expression_variables(expression.left)
                 | SemanticAnalyzer._expression_variables(expression.right)
             )
-        if isinstance(expression, NumberExpression):
+        if isinstance(expression, (NumberExpression, StringExpression, BooleanExpression)):
             return set()
         if isinstance(expression, CallExpression):
             variables: set[str] = set()
@@ -446,8 +556,16 @@ class SemanticAnalyzer:
     def _static_function_call(
         self,
         expression: CallExpression,
-        _arguments: tuple[int | float, ...],
+        arguments: tuple[int | float | bool | str, ...],
     ) -> int | float:
+        if expression.name == _INPUT_NUMBER:
+            if len(arguments) != 1 or not isinstance(arguments[0], str):
+                self._raise(
+                    expression.line,
+                    expression.column,
+                    "'input_number' expects exactly one string prompt.",
+                )
+            return 1.0
         self._validate_call(
             expression.name,
             expression.arguments,

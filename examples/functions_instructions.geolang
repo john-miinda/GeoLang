@@ -1,0 +1,13 @@
+language GeoLang
+
+function doubled(value)
+    return value * 2
+end
+
+circle wheel radius = doubled(3)
+
+instruction draw()
+    calculate wheel
+end
+
+perform draw()

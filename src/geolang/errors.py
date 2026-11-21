@@ -45,3 +45,10 @@ class RuntimeGeoLangError(GeoLangError):
 
     def __init__(self, message: str, line: int, column: int) -> None:
         super().__init__("Runtime", message, line, column)
+
+
+class CompilerError(GeoLangError):
+    """Raised when a requested native compilation cannot be completed."""
+
+    def __init__(self, message: str, line: int, column: int) -> None:
+        super().__init__("Compiler", message, line, column)

@@ -6,14 +6,18 @@ from collections.abc import Callable
 
 from geolang.ast_nodes import (
     BinaryExpression,
+    BooleanExpression,
     CallExpression,
     Condition,
     Expression,
     NumberExpression,
+    StringExpression,
     UnaryExpression,
     VariableExpression,
 )
 from geolang.lexer import TokenType
+
+RuntimeValue = int | float | bool | str
 
 
 class ExpressionEvaluationError(Exception):
@@ -28,13 +32,17 @@ class ExpressionEvaluationError(Exception):
 
 def evaluate_expression(
     expression: Expression,
-    variables: Mapping[str, int | float] | None = None,
+    variables: Mapping[str, RuntimeValue] | None = None,
     function_call: Callable[
-        [CallExpression, tuple[int | float, ...]], int | float
+        [CallExpression, tuple[RuntimeValue, ...]], RuntimeValue
     ] | None = None,
-) -> int | float:
+) -> RuntimeValue:
     """Evaluate an AST expression, rejecting division by zero and non-finite values."""
     if isinstance(expression, NumberExpression):
+        value = expression.value
+    elif isinstance(expression, StringExpression):
+        value = expression.value
+    elif isinstance(expression, BooleanExpression):
         value = expression.value
     elif isinstance(expression, VariableExpression):
         if variables is None or expression.name not in variables:
@@ -62,6 +70,17 @@ def evaluate_expression(
     elif isinstance(expression, BinaryExpression):
         left = evaluate_expression(expression.left, variables, function_call)
         right = evaluate_expression(expression.right, variables, function_call)
+        if (
+            not isinstance(left, (int, float))
+            or isinstance(left, bool)
+            or not isinstance(right, (int, float))
+            or isinstance(right, bool)
+        ):
+            raise ExpressionEvaluationError(
+                "Arithmetic expressions require numeric values.",
+                expression.line,
+                expression.column,
+            )
         try:
             if expression.operator is TokenType.PLUS:
                 value = left + right
@@ -97,9 +116,9 @@ def evaluate_expression(
 
 def evaluate_condition(
     condition: Condition,
-    variables: Mapping[str, int | float] | None = None,
+    variables: Mapping[str, RuntimeValue] | None = None,
     function_call: Callable[
-        [CallExpression, tuple[int | float, ...]], int | float
+        [CallExpression, tuple[RuntimeValue, ...]], RuntimeValue
     ] | None = None,
 ) -> bool:
     """Evaluate a numeric comparison condition."""

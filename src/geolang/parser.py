@@ -1,10 +1,12 @@
 """Recursive-descent parser for GeoLang source tokens."""
 
 from collections.abc import Sequence
+from pathlib import Path
 from typing import NoReturn
 
 from geolang.ast_nodes import (
     BinaryExpression,
+    BooleanExpression,
     CallExpression,
     CallableDeclaration,
     CalculateStatement,
@@ -16,8 +18,11 @@ from geolang.ast_nodes import (
     NumberExpression,
     Program,
     PerformStatement,
+    PrintStatement,
+    ImportStatement,
     ReturnStatement,
     Statement,
+    StringExpression,
     UnaryExpression,
     VariableDeclaration,
     VariableAssignment,
@@ -49,6 +54,50 @@ class Parser:
     def from_source(cls, source: str) -> Parser:
         """Lex source text and create a parser for its tokens."""
         return cls(Lexer(source).tokenize())
+
+    @classmethod
+    def load_file(cls, path: str | Path) -> Program:
+        """Parse a program and recursively merge imported .geolang files."""
+        return cls._load_file(Path(path).resolve(), [])
+
+    @classmethod
+    def _load_file(cls, path: Path, stack: list[Path]) -> Program:
+        resolved = path.resolve()
+        if resolved in stack:
+            cycle = " -> ".join(str(item) for item in [*stack, resolved])
+            from geolang.errors import SemanticError
+            raise SemanticError(
+                f"Circular module import: {cycle}",
+                1,
+                1,
+            )
+
+        try:
+            source = resolved.read_text(encoding="utf-8")
+        except (OSError, UnicodeError) as error:
+            from geolang.errors import SemanticError
+            raise SemanticError(
+                f"Could not read imported module '{resolved}': {error}",
+                1,
+                1,
+            ) from error
+
+        program = cls.from_source(source).parse()
+        statements: list[Statement] = []
+        for statement in program.statements:
+            if isinstance(statement, ImportStatement):
+                imported_path = (resolved.parent / statement.path).resolve()
+                imported = cls._load_file(imported_path, [*stack, resolved])
+                statements.extend(imported.statements)
+            else:
+                statements.append(statement)
+
+        return Program(
+            program.language,
+            tuple(statements),
+            program.line,
+            program.column,
+        )
 
     def parse(self) -> Program:
         """Parse one complete program."""
@@ -132,6 +181,31 @@ class Parser:
             return PerformStatement(
                 name.lexeme,
                 arguments,
+                keyword.line,
+                keyword.column,
+            )
+        if self._match(TokenType.PRINT):
+            keyword = self._previous()
+            self._consume(
+                TokenType.LEFT_PAREN,
+                "Expected '(' after 'print'.",
+            )
+            value = self._expression()
+            self._consume(
+                TokenType.RIGHT_PAREN,
+                "Expected ')' after print value.",
+            )
+            return PrintStatement(value, keyword.line, keyword.column)
+        if self._match(TokenType.IMPORT):
+            keyword = self._previous()
+            if not self._match(TokenType.STRING):
+                self._raise_error(
+                    self._peek(),
+                    "Expected a quoted file path after 'import'.",
+                )
+            path_token = self._previous()
+            return ImportStatement(
+                str(path_token.literal),
                 keyword.line,
                 keyword.column,
             )
@@ -334,6 +408,17 @@ class Parser:
             if value is None:
                 self._raise_error(token, "Number token is missing its numeric value.")
             return NumberExpression(value, token.line, token.column)
+        if self._match(TokenType.STRING):
+            token = self._previous()
+            if not isinstance(token.literal, str):
+                self._raise_error(token, "String token is missing its text value.")
+            return StringExpression(token.literal, token.line, token.column)
+        if self._match(TokenType.TRUE):
+            token = self._previous()
+            return BooleanExpression(True, token.line, token.column)
+        if self._match(TokenType.FALSE):
+            token = self._previous()
+            return BooleanExpression(False, token.line, token.column)
 
         if self._match(TokenType.IDENTIFIER):
             token = self._previous()

@@ -2,18 +2,22 @@
 
 from geolang.ast_nodes import (
     BinaryExpression,
+    BooleanExpression,
     CalculateStatement,
     CallableDeclaration,
     CallExpression,
     Condition,
     Expression,
     GeometryDeclaration,
+    ImportStatement,
     IfStatement,
     NumberExpression,
     PerformStatement,
     Program,
+    PrintStatement,
     ReturnStatement,
     Statement,
+    StringExpression,
     UnaryExpression,
     VariableAssignment,
     VariableDeclaration,
@@ -107,9 +111,12 @@ class PythonCompiler:
         body = self._statements(declaration.body, 2)
         lines.extend(body or ["        pass"])
         if declaration.returns_value:
+            message = (
+                f"GeoLang function '{declaration.name}' "
+                "completed without returning"
+            )
             lines.append(
-                f"        raise RuntimeError("
-                f"'GeoLang function {declaration.name!r} completed without returning')"
+                f"        raise RuntimeError({message!r})"
             )
         lines.extend(
             [
@@ -123,6 +130,14 @@ class PythonCompiler:
         lines: list[str] = []
         prefix = "    " * indent
         for statement in statements:
+            if isinstance(statement, ImportStatement):
+                continue
+            if isinstance(statement, PrintStatement):
+                lines.append(
+                    prefix
+                    + f"_print_value({self._expression(statement.value)})"
+                )
+                continue
             if isinstance(statement, (GeometryDeclaration, CallableDeclaration)):
                 continue
             if isinstance(statement, VariableDeclaration):
@@ -192,18 +207,32 @@ class PythonCompiler:
     def _expression(self, expression: Expression) -> str:
         if isinstance(expression, NumberExpression):
             return repr(expression.value)
+        if isinstance(expression, StringExpression):
+            return repr(expression.value)
+        if isinstance(expression, BooleanExpression):
+            return "True" if expression.value else "False"
         if isinstance(expression, VariableExpression):
             return self._variable_name(expression.name)
         if isinstance(expression, CallExpression):
             arguments = ", ".join(
                 self._expression(argument) for argument in expression.arguments
             )
+            if expression.name == "input_number":
+                return (
+                    f"_input_number({arguments}, "
+                    f"{expression.line}, {expression.column})"
+                )
             return f"{self._routine_name(expression.name)}({arguments})"
         if isinstance(expression, UnaryExpression):
             operator = "-" if expression.operator is TokenType.MINUS else "+"
             return f"({operator}{self._expression(expression.operand)})"
         if isinstance(expression, BinaryExpression):
             operator = _PYTHON_OPERATORS[expression.operator]
+            if expression.operator is TokenType.SLASH:
+                return (
+                    f"_divide({self._expression(expression.left)}, "
+                    f"{self._expression(expression.right)})"
+                )
             return (
                 f"({self._expression(expression.left)} {operator} "
                 f"{self._expression(expression.right)})"
@@ -247,6 +276,48 @@ _results = []
 _call_depth = 0
 
 
+def _divide(left, right):
+    if right == 0:
+        raise RuntimeError("Division by zero")
+    try:
+        value = left / right
+    except OverflowError as error:
+        raise RuntimeError("Arithmetic result is outside the numeric range") from error
+    try:
+        finite = _math.isfinite(value)
+    except OverflowError:
+        finite = False
+    if not finite:
+        raise RuntimeError("Arithmetic result must be finite")
+    return value
+
+
+def _print_value(value):
+    if isinstance(value, bool):
+        print("true" if value else "false")
+    else:
+        print(value)
+
+
+def _input_number(prompt, line, column):
+    if not isinstance(prompt, str):
+        raise RuntimeError(f"input_number prompt must be text at {line}:{column}")
+    try:
+        text = input(prompt).strip()
+    except EOFError as error:
+        raise RuntimeError(f"No numeric input was provided at {line}:{column}") from error
+    try:
+        value = int(text)
+    except ValueError:
+        try:
+            value = float(text)
+        except ValueError as error:
+            raise RuntimeError(f"{text!r} is not a valid number at {line}:{column}") from error
+    if isinstance(value, float) and not _math.isfinite(value):
+        raise RuntimeError(f"Input must be finite at {line}:{column}")
+    return value
+
+
 def _calculate(key, line, column):
     if key not in _shapes:
         raise RuntimeError(f"GeoLang shape {key[1]!r} is not defined at {line}:{column}")
@@ -254,8 +325,10 @@ def _calculate(key, line, column):
     dimensions = dimensions_factory()
     for field, value in dimensions.items():
         try:
+            if isinstance(value, bool) or not isinstance(value, (int, float)):
+                raise TypeError
             finite = _math.isfinite(value)
-        except OverflowError:
+        except (OverflowError, TypeError):
             finite = False
         if not finite:
             raise RuntimeError(f"GeoLang dimension {field!r} is outside the numeric range")

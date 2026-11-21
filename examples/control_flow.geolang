@@ -1,0 +1,15 @@
+language GeoLang
+
+let count = 0
+square counter side = count + 1
+
+while count < 3
+    calculate counter
+    set count = count + 1
+end
+
+if count == 3
+    calculate counter
+else
+    calculate counter
+end

@@ -23,8 +23,13 @@ class TokenType(Enum):
     INSTRUCTION = auto()
     RETURN = auto()
     PERFORM = auto()
+    PRINT = auto()
+    IMPORT = auto()
+    TRUE = auto()
+    FALSE = auto()
     IDENTIFIER = auto()
     NUMBER = auto()
+    STRING = auto()
     EQUALS = auto()
     PLUS = auto()
     MINUS = auto()
@@ -69,6 +74,10 @@ _KEYWORDS = {
     "instruction": TokenType.INSTRUCTION,
     "return": TokenType.RETURN,
     "perform": TokenType.PERFORM,
+    "print": TokenType.PRINT,
+    "import": TokenType.IMPORT,
+    "true": TokenType.TRUE,
+    "false": TokenType.FALSE,
 }
 
 
@@ -95,8 +104,14 @@ class Lexer:
 
             if character in " \t\f":
                 continue
+            if character == "#":
+                while not self._is_at_end() and self._peek() != "\n":
+                    self._advance()
+                continue
             if character == "\n":
                 self._add_token(TokenType.NEWLINE)
+            elif character == '"':
+                self._string()
             elif character.isascii() and (character.isalpha() or character == "_"):
                 self._identifier()
             elif character.isascii() and character.isdigit():
@@ -156,6 +171,42 @@ class Lexer:
         lexeme = self.source[self.start:self.current]
         token_type = _KEYWORDS.get(lexeme.lower(), TokenType.IDENTIFIER)
         self._add_token(token_type)
+
+    def _string(self) -> None:
+        value: list[str] = []
+        while not self._is_at_end() and self._peek() != '"':
+            if self._peek() == "\\":
+                self._advance()
+                if self._is_at_end():
+                    break
+                escape = self._advance()
+                value.append({
+                    "n": "\n",
+                    "t": "\t",
+                    '"': '"',
+                    "\\": "\\",
+                }.get(escape, escape))
+            else:
+                character = self._advance()
+                if character == "\n":
+                    raise LexicalError(
+                        "Strings cannot span multiple lines.",
+                        self.start_line,
+                        self.start_column,
+                    )
+                value.append(character)
+
+        if self._is_at_end():
+            raise LexicalError(
+                "Unterminated string.",
+                self.start_line,
+                self.start_column,
+            )
+        self._advance()
+        lexeme = self.source[self.start:self.current]
+        self.tokens.append(
+            Token(TokenType.STRING, lexeme, self.start_line, self.start_column, "".join(value))
+        )
 
     def _number(self) -> None:
         while not self._is_at_end() and self._peek().isascii() and self._peek().isdigit():

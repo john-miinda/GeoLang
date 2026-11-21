@@ -1,5 +1,6 @@
 import math
 import unittest
+from unittest.mock import patch
 
 from geolang.errors import RuntimeGeoLangError
 from geolang.interpreter import Interpreter, format_number
@@ -225,6 +226,39 @@ class InterpreterTests(unittest.TestCase):
     def test_formats_measurements_to_two_decimal_places(self) -> None:
         self.assertEqual(format_number(153.938), "153.94")
         self.assertEqual(format_number(30), "30.00")
+
+    def test_prints_strings_and_booleans(self) -> None:
+        import contextlib
+        import io
+
+        output = io.StringIO()
+        with contextlib.redirect_stdout(output):
+            self.execute(
+                'print("hello")\n'
+                "let enabled = true\n"
+                "print(enabled)\n"
+                "print(false)"
+            )
+
+        self.assertEqual(output.getvalue(), "hello\ntrue\nfalse\n")
+
+    def test_reads_numbers_and_evaluates_user_formula(self) -> None:
+        import contextlib
+        import io
+
+        output = io.StringIO()
+        with patch("builtins.input", side_effect=["5", "3"]):
+            with contextlib.redirect_stdout(output):
+                self.execute(
+                    'let length = input_number("Length: ")\n'
+                    'let width = input_number("Width: ")\n'
+                    "let area = length * width\n"
+                    'print("Area:")\n'
+                    "print(area)\n"
+                    "print(2 * (length + width))"
+                )
+
+        self.assertEqual(output.getvalue(), "Area:\n15\n16\n")
 
 
 if __name__ == "__main__":

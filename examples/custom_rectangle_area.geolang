@@ -1,0 +1,13 @@
+language GeoLang
+
+# Enter new values each time; no source edits are needed.
+let length = input_number("Length: ")
+let width = input_number("Width: ")
+
+let area = length * width
+let perimeter = 2 * (length + width)
+
+print("Area:")
+print(area)
+print("Perimeter:")
+print(perimeter)

@@ -1,7 +1,8 @@
 """Interactive GeoLang prompt with persistent source history."""
 
 import sys
-from collections.abc import Callable, TextIO
+from collections.abc import Callable
+from typing import TextIO
 
 from geolang import __version__
 from geolang.errors import GeoLangError

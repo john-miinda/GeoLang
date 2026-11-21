@@ -1,181 +1,420 @@
 # GeoLang
-<<<<<<< HEAD
 
-GeoLang is an experimental, geometry-oriented programming language. It is being
-built incrementally to make each language-processing stage understandable and
-testable.
+GeoLang is an experimental geometry-oriented programming language implemented
+in Python. It combines numeric expressions, variables, control flow,
+named geometry declarations, functions, instructions, and source-located
+errors in a small, readable interpreter.
 
-# GeoLang
+GeoLang 0.1.0 is a runnable interpreted language with two compilation
+backends: an AST-to-Python source compiler and a Windows x64 native executable
+compiler.
 
-GeoLang is a geometry-oriented programming language implemented in Python.
-Its interpreter includes a hand-written lexer, recursive-descent parser,
-abstract syntax tree, semantic analyzer, and runtime for geometric calculations.
-The first release also supports arithmetic, numeric variables, named shapes,
-conditionals, and bounded while loops.
+## Features
 
-```geolang
-language GeoLang
-
-let radius = 7
-circle wheel radius = radius
-
-calculate wheel
-```
+- Hand-written lexer with 1-based line and column positions
+- Recursive-descent parser and immutable AST
+- Semantic validation before execution
+- Arithmetic: `+`, `-`, `*`, `/`, unary `+` and `-`
+- Parentheses and standard operator precedence
+- Variables and assignments
+- Circles, triangles, rectangles, and squares
+- Named and anonymous shapes
+- `if`/`else` conditionals
+- Bounded `while` loops
+- Numeric comparisons
+- Functions with parameters and return values
+- Reusable instructions invoked with `perform`
+- Comments, string literals, and boolean literals
+- Built-in `print(...)` output
+- Interactive numeric input with `input_number(...)`
+- Relative file imports
+- Interactive REPL
+- Source-located lexical, syntax, semantic, and runtime errors
+- Python source compilation through the CLI
+- Windows x64 executable compilation through MSVC
+- No runtime third-party dependencies
 
 ## Requirements
 
 - Python 3.14 or newer
 - Windows PowerShell, Command Prompt, or another Python-capable terminal
 
-GeoLang has no runtime third-party dependencies.
+## Install
 
-## Install and run
-
-From the project directory in PowerShell, create and activate a virtual
-environment, then install GeoLang in editable mode:
+From the repository root:
 
 ```powershell
 py -3.14 -m venv .venv
 .\.venv\Scripts\Activate.ps1
+python -m pip install --upgrade pip
 python -m pip install -e .
+```
+
+If `py -3.14` is unavailable but `python` is Python 3.14 or newer:
+
+```powershell
+python -m venv .venv
+.\.venv\Scripts\Activate.ps1
+python -m pip install --upgrade pip
+python -m pip install -e .
+```
+
+Editable installation is required if you want to run `python -m unittest`
+without setting `PYTHONPATH`.
+
+## Run a program
+
+```powershell
 geolang examples\first.geolang
 ```
 
-If the Python launcher is unavailable, create the environment with
-`python -m venv .venv` using a Python 3.14+ interpreter. If PowerShell blocks
-activation, invoke the environment directly:
+Or use the module entry point:
 
 ```powershell
-.\.venv\Scripts\python.exe -m pip install -e .
-.\.venv\Scripts\geolang.exe examples\first.geolang
+python -m geolang examples\first.geolang
 ```
 
-`python -m geolang examples\first.geolang` also runs the language without
-calling the installed console command. Use `geolang --help` for options, or
-`geolang --tokens examples\first.geolang` to inspect lexer tokens.
+The interpreter prints each calculated shape and its dimensions and
+measurements.
 
-The interpreter computes circle area and circumference, rectangle and square
-area and perimeter, and triangle area from `base` and `height`. To calculate a
-triangle's area and perimeter from its side lengths, provide `side_a`, `side_b`,
-and `side_c`; the analyzer checks the triangle inequality. Base and height do
-not determine a triangle's perimeter, so that form reports area only.
-
-## Language grammar
+## CLI
 
 ```text
-program       := ["language" IDENTIFIER NEWLINE] statement*
-statement     := variable-declaration | assignment | geometry-declaration
-                 | calculate-statement | if-statement | while-statement
-variable-declaration
-              := "let" IDENTIFIER "=" expression
-assignment    := "set" IDENTIFIER "=" expression
-geometry-declaration
-              := SHAPE [IDENTIFIER] (IDENTIFIER "=" expression)+
-calculate-statement
-              := "calculate" (SHAPE | IDENTIFIER)
-if-statement  := "if" condition NEWLINE statement*
-                 ["else" NEWLINE statement*] "end"
-while-statement
-              := "while" condition NEWLINE statement* "end"
-condition     := expression COMPARISON expression
-expression    := term (("+" | "-") term)*
-term          := unary (("*" | "/") unary)*
-unary         := ("+" | "-") unary | NUMBER | IDENTIFIER | "(" expression ")"
-COMPARISON    := "==" | "!=" | "<" | "<=" | ">" | ">="
-SHAPE         := "circle" | "triangle" | "rectangle" | "square"
+geolang SOURCE_FILE
+geolang --tokens SOURCE_FILE
+geolang --compile SOURCE_FILE
+geolang --native OUTPUT.exe SOURCE_FILE
+geolang --repl
+geolang --version
+geolang --help
 ```
 
-Statements are separated by newlines. Parentheses and standard arithmetic
-precedence are represented in the AST. Semantic analysis validates dimension
-expressions before the interpreter evaluates the geometry formulas.
-Variables must be declared before use; `set` updates a declared variable.
-Variable and shape declarations belong at the top level, outside control-flow
-blocks. Shape names must be unique. For backwards compatibility, unnamed shapes
-can still use `calculate circle`, `calculate triangle`, and similar type-based
-instructions; only one unnamed shape of each type is allowed.
+- `SOURCE_FILE` contains GeoLang source.
+- `--tokens` prints the lexer tokens and their source positions.
+- `--compile` prints executable Python source generated by the AST compiler.
+- `--native OUTPUT.exe` builds a Windows x64 executable with MSVC.
+- `--repl` starts the interactive prompt. Type `exit` or `quit` to leave.
+- `--version` prints the GeoLang package version.
+- `--help` prints command usage.
 
-`if` conditions execute one branch. `while` conditions are checked before each
-iteration. Loops stop with a runtime error after 10,000 iterations to avoid
-unintended infinite execution.
+To compile and execute a program using PowerShell:
+
+```powershell
+geolang --compile examples\first.geolang |
+    Out-File -Encoding utf8 $env:TEMP\first_geolang.py
+python $env:TEMP\first_geolang.py
+```
+
+Native compilation requires Visual Studio Build Tools with **Desktop
+development with C++** and the Windows x64 SDK installed. Create the target
+directory, compile, and run the executable:
+
+```powershell
+New-Item -ItemType Directory -Force build
+geolang --native build\first.exe examples\first.geolang
+.\build\first.exe
+```
+
+The generated executable contains native Windows x64 machine code. MSVC is
+needed at build time only; running the resulting program does not require
+Python or the GeoLang package.
+
+The native backend uses signed 64-bit integers and double-precision floating
+point. Integer arithmetic that exceeds the signed 64-bit range reports a
+runtime error; the interpreter and Python backend retain Python's wider
+integer behavior.
+
+## Language overview
+
+Statements are separated by newlines. Keywords are case-insensitive.
+
+### Optional language header
+
+```geolang
+language GeoLang
+```
+
+### Variables and arithmetic
+
+Declare a variable with `let` and update it with `set`:
 
 ```geolang
 let count = 0
-while count < 3
-    set count = count + 1
-end
-
-if count == 3
-    calculate wheel
-else
-    calculate backup_wheel
-end
+set count = count + 1
 ```
 
-Comparison operators are numeric (`==`, `!=`, `<`, `<=`, `>`, `>=`). Variables
-must be declared with `let` before they can be updated with `set`. Shape and
-variable declarations are currently restricted to the top-level program; the
-blocks can contain assignments, calculations, and nested control flow.
+Variables must be declared before use. Variable declarations are allowed at
+the top level and inside functions and instructions; declarations are not
+allowed directly inside `if` or `while` blocks.
 
-## Initial semantic rules
+Supported arithmetic:
+
+```geolang
+let value = 2 + 3 * (4 - 1)
+let quotient = value / 2
+let negative = -3
+```
+
+Use `#` for a line comment:
+
+```geolang
+# This is a comment.
+let radius = 7
+```
+
+String and boolean literals are supported:
+
+```geolang
+let name = "wheel"
+let enabled = true
+let disabled = false
+print(name)
+print(enabled)
+```
+
+Use `input_number("prompt")` to read a number while the program runs. This
+lets you write formulas once and try different values without editing the
+source each time:
+
+```geolang
+let length = input_number("Length: ")
+let width = input_number("Width: ")
+let area = length * width
+
+print("Area:")
+print(area)
+```
+
+Comparisons are numeric and support `==`, `!=`, `<`, `<=`, `>`, and `>=`.
+
+### Geometry declarations
+
+GeoLang supports four shapes:
 
 | Shape | Required dimensions |
 |---|---|
 | `circle` | `radius` (zero or greater) |
-| `triangle` | `base`, `height`; or `side_a`, `side_b`, `side_c` |
-| `rectangle` | `length`, `width` (both greater than zero) |
+| `triangle` | `base` and `height`, or `side_a`, `side_b`, and `side_c` |
+| `rectangle` | `length` and `width` (greater than zero) |
 | `square` | `side` (greater than zero) |
 
-Dimension expressions must evaluate to finite numbers, and division by zero is
-reported as a semantic error. Named shapes may share a type, and
-`calculate name` refers to a particular named shape. Calculations may appear
-before shape declarations. Only one unnamed shape of each type is allowed.
+Named shapes:
 
-All triangle dimensions must be greater than zero. Side-based triangles must
-satisfy the triangle inequality.
+```geolang
+let radius = 7
+circle wheel radius = radius
 
-## Test
+calculate wheel
+```
+
+Anonymous shapes:
+
+```geolang
+circle radius = 7
+calculate circle
+```
+
+Only one anonymous shape of each type is allowed. Named shapes must have unique
+names, and multiple named shapes may share the same type.
+
+Triangles can be calculated from a base and height:
+
+```geolang
+triangle base = 10 height = 6
+calculate triangle
+```
+
+Or from three side lengths:
+
+```geolang
+triangle sides side_a = 3 side_b = 4 side_c = 5
+calculate sides
+```
+
+Side-based triangles must satisfy the triangle inequality.
+
+Calculations may appear before a shape declaration.
+
+### Conditions
+
+```geolang
+let count = 2
+square small side = 2
+square large side = 5
+
+if count < 3
+    calculate small
+else
+    calculate large
+end
+```
+
+### Loops
+
+```geolang
+let count = 0
+square counter side = 1
+
+while count < 3
+    calculate counter
+    set count = count + 1
+end
+```
+
+Loops stop with a runtime error after 10,000 iterations.
+
+### Functions
+
+Functions accept parameters and must contain a `return`:
+
+```geolang
+function doubled(value)
+    return value * 2
+end
+
+circle wheel radius = doubled(3)
+calculate wheel
+```
+
+A function call may also be used in variables, conditions, and geometry
+dimension expressions.
+
+Functions require the correct argument count and are checked semantically
+before execution. Recursive calls stop at the 100-call-depth limit.
+
+### Instructions
+
+Instructions reuse statements and are invoked with `perform`:
+
+```geolang
+circle wheel radius = 2
+
+instruction draw()
+    calculate wheel
+end
+
+perform draw()
+perform draw()
+```
+
+Instructions cannot be used as value expressions or contain `return`.
+Functions cannot be invoked with `perform`.
+
+### Printing
+
+Use `print(...)` to write a value or text:
+
+```geolang
+print("GeoLang")
+print(2 + 3)
+print(true)
+```
+
+Booleans are printed as `true` or `false`.
+
+### Custom arithmetic programs
+
+GeoLang arithmetic is not limited to geometry declarations. Use variables,
+input, and `print` to implement formulas of your own. For example,
+[examples/custom_rectangle_area.geolang](examples/custom_rectangle_area.geolang)
+asks for rectangle dimensions and prints its area and perimeter:
+
+```powershell
+geolang examples\custom_rectangle_area.geolang
+```
+
+Enter the length and width when prompted. The program performs the arithmetic
+directly; it does not rely on a built-in rectangle shape.
+
+### Modules and file imports
+
+Import a local `.geolang` file with a relative quoted path:
+
+```geolang
+import "shared.geolang"
+
+calculate wheel
+```
+
+Imported files are parsed and merged into the importing program. Paths are
+resolved relative to the file that contains the import. Missing files and
+circular imports are reported as errors.
+
+## Error handling
+
+GeoLang reports source-located errors without a Python traceback:
+
+- Lexical errors for unsupported characters
+- Syntax errors for invalid grammar
+- Semantic errors for invalid declarations, references, calls, dimensions,
+  or triangles
+- Runtime errors for arithmetic range failures, loop limits, and call-depth
+  limits
+
+The supported numeric range uses Python numeric values. Dimensions and
+calculated results must be finite.
+
+## Tests
+
+After installing the project, run:
 
 ```powershell
 python -m unittest discover -s tests -v
 ```
 
-The test suite includes command-line integration tests for successful programs
-and lexical, syntax, semantic, and runtime failures.
+The suite covers:
+
+- Lexer tokenization and source locations
+- Parser and AST construction
+- Arithmetic and precedence
+- Variables and control flow
+- Geometry and semantic validation
+- Interpreter execution
+- Python source compilation
+- Windows x64 native compilation (tests skip if MSVC x64 tools are absent)
+- CLI success and failure behavior
+
+While developing without installation, tests can instead be run with:
+
+```powershell
+$env:PYTHONPATH = "src"
+python -m unittest discover -s tests -v
+```
+
+## Examples
+
+- [examples/first.geolang](examples/first.geolang) - all four geometry types
+- [examples/functions_instructions.geolang](examples/functions_instructions.geolang) -
+  functions and instructions
+- [examples/control_flow.geolang](examples/control_flow.geolang) -
+  conditions and loops
+- [examples/sides_triangle.geolang](examples/sides_triangle.geolang) -
+  triangle side lengths
+- [examples/literals.geolang](examples/literals.geolang) -
+  comments, strings, booleans, and print
+- [examples/custom_rectangle_area.geolang](examples/custom_rectangle_area.geolang) -
+  user-entered values and custom arithmetic
+- [examples/modules/main.geolang](examples/modules/main.geolang) -
+  relative file imports
 
 ## Architecture
 
-- `src/geolang/lexer.py` turns source text into typed tokens and tracks
-  1-based line and column positions.
-- `src/geolang/parser.py` uses recursive descent to validate grammar and build
-  the program tree.
-- `src/geolang/ast_nodes.py` defines immutable nodes for programs, geometry
-  declarations, variables, calculation instructions, and expressions.
-- `src/geolang/semantic.py` validates dimensions and shape references before
-  execution.
-- `src/geolang/expressions.py` evaluates arithmetic expressions consistently
-  during semantic analysis and execution.
-- `src/geolang/interpreter.py` computes geometry results for `calculate`
-  instructions.
-- `src/geolang/errors.py` defines source-located errors; the lexer raises a
-  lexical error for unsupported characters, the parser reports syntax errors,
-  semantic analysis reports invalid declarations or calculations, and runtime
-  errors report calculations outside the supported numeric range or loops
-  exceeding their iteration limit.
-- `src/geolang/main.py` is the command-line entry point.
-- `tests/` contains standard-library `unittest` tests.
-- `examples/` contains runnable GeoLang source examples.
+- `src/geolang/lexer.py` - source text to tokens
+- `src/geolang/parser.py` - tokens to AST
+- `src/geolang/ast_nodes.py` - immutable AST data types
+- `src/geolang/semantic.py` - declarations and validation
+- `src/geolang/expressions.py` - shared expression and condition evaluation
+- `src/geolang/interpreter.py` - direct execution
+- `src/geolang/compiler.py` - AST to executable Python source
+- `src/geolang/native_compiler.py` - AST to C++17 and MSVC Windows x64 executable
+- `src/geolang/main.py` - command-line entry point
+- `src/geolang/repl.py` - interactive prompt implementation
+- `tests/` - standard-library unit and CLI integration tests
 
 ## Project status
 
-GeoLang 0.1.0 is a runnable, geometry-focused interpreted language. It includes
-lexing, parsing and AST construction, semantic checks, arithmetic, variables,
-named shapes, conditionals, loops, source-file execution, and source-located
-errors. The project is installable and has no runtime third-party dependencies.
-
-The test suite includes unit tests and CLI integration tests for successful
-execution and lexical, syntax, semantic, and runtime failures. GeoLang does not
-compile to machine code or another language. User-defined functions, a REPL,
-and user-defined instructions remain future features.
-=======
-A custom geometry-oriented programming language built with Python
->>>>>>> 094c888c6f6c77e24b7a32ccfe0380eaceeab062
+GeoLang 0.1.0 provides a complete interpreter pipeline for the documented
+language subset, including routines, Python source output, and a Windows x64
+native executable backend. The project has no runtime third-party dependencies
+and is released as an editable-installable Python package. Native compilation
+requires Visual Studio C++ Build Tools on the build machine.

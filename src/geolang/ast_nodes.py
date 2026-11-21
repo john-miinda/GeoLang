@@ -16,6 +16,20 @@ class NumberExpression:
 
 
 @dataclass(frozen=True, slots=True)
+class StringExpression:
+    value: str
+    line: int
+    column: int
+
+
+@dataclass(frozen=True, slots=True)
+class BooleanExpression:
+    value: bool
+    line: int
+    column: int
+
+
+@dataclass(frozen=True, slots=True)
 class VariableExpression:
     name: str
     line: int
@@ -49,6 +63,8 @@ class BinaryExpression:
 
 Expression: TypeAlias = (
     NumberExpression
+    | StringExpression
+    | BooleanExpression
     | VariableExpression
     | CallExpression
     | UnaryExpression
@@ -141,6 +157,20 @@ class PerformStatement:
 
 
 @dataclass(frozen=True, slots=True)
+class PrintStatement:
+    value: Expression
+    line: int
+    column: int
+
+
+@dataclass(frozen=True, slots=True)
+class ImportStatement:
+    path: str
+    line: int
+    column: int
+
+
+@dataclass(frozen=True, slots=True)
 class CalculateStatement:
     kind: TokenType | None
     line: int
@@ -158,6 +188,8 @@ Statement: TypeAlias = (
     | CallableDeclaration
     | ReturnStatement
     | PerformStatement
+    | PrintStatement
+    | ImportStatement
 )
 
 

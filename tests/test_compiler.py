@@ -1,6 +1,7 @@
 import contextlib
 import io
 import unittest
+from unittest.mock import patch
 
 from geolang.compiler import PythonCompiler
 from geolang.errors import SemanticError
@@ -46,6 +47,58 @@ class PythonCompilerTests(unittest.TestCase):
 
         self.assertIn("Side = 2.00", output)
         self.assertIn("Area = 4.00", output)
+
+    def test_compiled_function_completion_error_is_valid_python(self) -> None:
+        generated = PythonCompiler().compile(
+            Parser.from_source(
+                "function doubled(value)\n"
+                "return value * 2\n"
+                "end\n"
+                "let answer = doubled(3)"
+            ).parse()
+        )
+
+        compile(generated, "<compiled-geolang>", "exec")
+        self.assertIn(
+            "GeoLang function 'doubled' completed without returning",
+            generated,
+        )
+
+    def test_compiler_rejects_mutated_dimension_division_by_zero_at_runtime(self) -> None:
+        with self.assertRaises(RuntimeError) as error:
+            self.compile_and_run(
+                "let denominator = 1\n"
+                "circle wheel radius = 10 / denominator\n"
+                "set denominator = 0\n"
+                "calculate wheel"
+            )
+
+        self.assertIn("Division by zero", str(error.exception))
+
+    def test_compiles_strings_booleans_and_print(self) -> None:
+        output, _ = self.compile_and_run(
+            'print("hello")\n'
+            "print(true)\n"
+            "print(false)"
+        )
+
+        self.assertEqual(output.splitlines()[:3], ["hello", "true", "false"])
+
+    def test_compiled_program_reads_numbers_for_custom_formula(self) -> None:
+        generated = PythonCompiler().compile(
+            Parser.from_source(
+                'let length = input_number("Length: ")\n'
+                'let width = input_number("Width: ")\n'
+                "print(length * width)"
+            ).parse()
+        )
+        output = io.StringIO()
+        namespace: dict[str, object] = {}
+        with patch("builtins.input", side_effect=["5", "3"]):
+            with contextlib.redirect_stdout(output):
+                exec(compile(generated, "<compiled-geolang>", "exec"), namespace)
+
+        self.assertIn("15", output.getvalue().splitlines())
 
     def test_rejects_semantically_invalid_program(self) -> None:
         with self.assertRaises(SemanticError) as error:

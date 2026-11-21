@@ -1,13 +1,16 @@
 import unittest
 
 from geolang.ast_nodes import (
+    BooleanExpression,
     BinaryExpression,
     CalculateStatement,
     CallExpression,
     CallableDeclaration,
     GeometryDeclaration,
+    ImportStatement,
     NumberExpression,
     PerformStatement,
+    PrintStatement,
     ReturnStatement,
     UnaryExpression,
     VariableDeclaration,
@@ -215,6 +218,18 @@ class ParserTests(unittest.TestCase):
         ).parse()
 
         SemanticAnalyzer().analyze(program)
+
+    def test_parses_strings_booleans_print_and_import(self) -> None:
+        program = Parser.from_source(
+            'let enabled = true\n'
+            'print("hello")\n'
+            'import "shared.geolang" # trailing comment'
+        ).parse()
+
+        self.assertIsInstance(program.statements[0].value, BooleanExpression)
+        self.assertIsInstance(program.statements[1], PrintStatement)
+        self.assertIsInstance(program.statements[2], ImportStatement)
+        self.assertEqual(program.statements[2].path, "shared.geolang")
 
 
 if __name__ == "__main__":

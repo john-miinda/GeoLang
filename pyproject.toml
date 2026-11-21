@@ -5,7 +5,7 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "geolang"
 version = "0.1.0"
-description = "A geometry-oriented programming language interpreter"
+description = "A geometry-oriented language interpreter and Windows x64 compiler"
 readme = "README.md"
 requires-python = ">=3.14"
 dependencies = []

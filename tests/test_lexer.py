@@ -98,6 +98,20 @@ class LexerTests(unittest.TestCase):
         self.assertEqual((error.exception.line, error.exception.column), (2, 1))
         self.assertIn("Unexpected character '@'", str(error.exception))
 
+    def test_comments_strings_and_boolean_literals(self) -> None:
+        tokens = Lexer(
+            'let enabled = true # comment\n'
+            'print("hello\\nworld")\n'
+            "let disabled = false"
+        ).tokenize()
+
+        types = [token.type for token in tokens]
+        self.assertIn(TokenType.TRUE, types)
+        self.assertIn(TokenType.FALSE, types)
+        self.assertIn(TokenType.STRING, types)
+        self.assertIn(TokenType.PRINT, types)
+        self.assertNotIn(TokenType.COMMA, types)
+
 
 if __name__ == "__main__":
     unittest.main()
